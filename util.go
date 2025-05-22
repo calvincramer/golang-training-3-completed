@@ -1,5 +1,11 @@
 package main
 
+import (
+	"io"
+	"net/http"
+	"time"
+)
+
 func IsPrime(n int64) bool {
 	// Credit: http://stackoverflow.com/questions/1801391/what-is-the-best-algorithm-for-checking-if-a-number-is-prime
 	switch {
@@ -26,4 +32,25 @@ func IsPrime(n int64) bool {
 		w = 6 - w
 	}
 	return true
+}
+
+// Do not modify me!
+func GetGoogleWebpage() {
+	// fmt.Println("Getting google.com...")
+	time.Sleep(time.Millisecond * 750)
+	resp, err := http.Get("https://www.google.com")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	_, err = io.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	// fmt.Println("Response has ", len(body), " bytes")
+}
+
+// Is prime result is given on the `res` channel
+func IsPrimeGoroutine(n int64, res chan<- bool) {
+	res <- IsPrime(n)
 }

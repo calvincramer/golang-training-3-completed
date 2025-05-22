@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"runtime"
 	"testing"
 	"time"
@@ -39,6 +38,22 @@ func TestBubbleWrapSqrt(t *testing.T) {
 	}
 	if approxEq(BubbleWrapSqrt(-16.0), 4.0) != true {
 		t.Fatalf("safe sqrt -16 should be 4")
+	}
+}
+
+func TestDoBackground(t *testing.T) {
+	start := time.Now()
+	DoBackground()
+	elapsed := time.Since(start)
+	if elapsed >= time.Millisecond*500 {
+		t.Fatalf("Task is not ran in background")
+	}
+}
+
+func TestCalcSumOneMillion(t *testing.T) {
+	const correctAns uint64 = (1_000_000 * (1_000_000 + 1)) / 2
+	if ans := CalcSumOneMillion(); ans != correctAns {
+		t.Fatalf("Incorrect answer: %d", ans)
 	}
 }
 
@@ -104,10 +119,36 @@ func TestIsPrimeMultiple(t *testing.T) {
 		parallelSecs := parallelTime.Seconds()
 		speedup := mainThreadWholeSecs / parallelSecs
 
-		fmt.Printf("%f - %f (%f) - %f\n", parallelSecs, mainThreadWholeSecs, mainThreadTime.Seconds(), speedup)
+		// fmt.Printf("%f - %f (%f) - %f\n", parallelSecs, mainThreadWholeSecs, mainThreadTime.Seconds(), speedup)
 
 		if speedup < 1.5 {
 			t.Fatalf("It looks like IsPrimeMultiple is not spawning goroutines based on execution time")
 		}
+	}
+}
+
+func TestIsPrimeBackground(t *testing.T) {
+	// Not testing that goroutines are used
+	for _, n := range []int64{2, 3, 5, 7, 11, 13, 17, 19, 97} {
+		if IsPrimeBackground(n) != true {
+			t.Fatalf("Expected %d to be prime", n)
+		}
+	}
+	for _, n := range []int64{1, 4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20, 100} {
+		if IsPrimeBackground(n) != false {
+			t.Fatalf("Expected %d to be composite", n)
+		}
+	}
+}
+
+func TestPingPongCalc(t *testing.T) {
+	if PingPongCalc(5) != 118 {
+		t.Fatalf("Incorrect answer for 5")
+	}
+	if PingPongCalc(-8) != 19593 {
+		t.Fatalf("Incorrect answer for -8")
+	}
+	if PingPongCalc(-11) != 4798 {
+		t.Fatalf("Incorrect answer for -11")
 	}
 }
