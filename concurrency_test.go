@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand/v2"
 	"runtime"
 	"testing"
 	"time"
@@ -150,5 +151,109 @@ func TestPingPongCalc(t *testing.T) {
 	}
 	if PingPongCalc(-11) != 4798 {
 		t.Fatalf("Incorrect answer for -11")
+	}
+}
+
+func TestMultiWriter(t *testing.T) {
+	var ch chan any
+	// Make sure calling user function does not block, immediately returns channel
+	{
+		start := time.Now()
+		ch = MultiWriter()
+		if elapsed := time.Since(start); elapsed > time.Millisecond*100 {
+			t.Fatalf("Calling MultiWriter() took longer than 100 ms. MultiWriter() should return a channel immediately.")
+		}
+	}
+	var numInts int = 0
+	var numStrs int = 0
+	var numSentinels int = 0
+done:
+	for {
+		val := <-ch
+		switch val.(type) {
+		case int:
+			numInts += 1
+			if numInts > 500 {
+				t.Fatalf("Got more than 500 integers on the channel")
+			}
+		case string:
+			numStrs += 1
+			if numStrs > 500 {
+				t.Fatalf("Got more than 500 strings on the channel")
+			}
+		case SentinelT:
+			numSentinels += 1
+			if numSentinels > 2 {
+				t.Fatalf("Got more than 2 sentinels on the channel")
+			}
+			if numSentinels == 1 {
+				if numInts < 500 && numStrs < 500 {
+					t.Fatalf("Got first sentinel but did not receive 500 integers or 500 strings yet")
+				}
+				if numInts == 500 && numStrs == 500 {
+					break done
+				}
+			} else if numSentinels == 2 {
+				if numInts != 500 && numStrs != 500 {
+					t.Fatalf("Got second sentinel, but do not have 500 integers and 500 strings")
+				}
+				break done
+			}
+		default:
+			t.Fatalf("Unexpected type on channel: %T", val)
+		}
+	}
+	if numInts != 500 || numStrs != 500 || (numSentinels != 1 && numSentinels != 2) {
+		t.Fatalf("Did not receive 500 integers and 500 strings and 1 or 2 sentinels")
+	}
+}
+
+func TestCommandConsumer(t *testing.T) {
+	{
+		cmdCh := make(chan Command)
+		doneCh := make(chan bool)
+		go func(cmdCh chan Command, doneCh chan bool) {
+			cmdCh <- Command{Op: OP_ADD, Args: []int{5, 8}}
+			doneCh <- true
+		}(cmdCh, doneCh)
+		ret := CommandConsumer(cmdCh, doneCh)
+		if ret != 13 {
+			t.Fatalf("Incorrect answer: %d, expected 13", ret)
+		}
+	}
+	{
+		cmdCh := make(chan Command)
+		doneCh := make(chan bool)
+		go func(cmdCh chan Command, doneCh chan bool) {
+			cmdCh <- Command{Op: OP_ADD, Args: []int{5, 8, -20}}
+			cmdCh <- Command{Op: OP_SET, Args: []int{4}}
+			cmdCh <- Command{Op: OP_SQUARE, Args: []int{}}
+			cmdCh <- Command{Op: OP_MULT, Args: []int{-1, 2}}
+			doneCh <- true
+		}(cmdCh, doneCh)
+		ret := CommandConsumer(cmdCh, doneCh)
+		if ret != -32 {
+			t.Fatalf("Incorrect answer: %d, expected -32", ret)
+		}
+	}
+}
+
+func TestPerformAccounting(t *testing.T) {
+	transactions := []Transaction{}
+	for i := 1; i <= 100_000; i++ {
+		transactions = append(transactions, Transaction{Category: "travel", Amount: -1})
+		transactions = append(transactions, Transaction{Category: "travel", Amount: 2})
+		transactions = append(transactions, Transaction{Category: "food", Amount: 15})
+		transactions = append(transactions, Transaction{Category: "food", Amount: -5})
+	}
+	rand.Shuffle(len(transactions), func(i, j int) {
+		transactions[i], transactions[j] = transactions[j], transactions[i]
+	})
+	PerformAccounting(transactions)
+	if CategoryTotals["travel"] != 100_000 {
+		t.Fatalf("Expected travel category to be sum to 500000, got %d", CategoryTotals["travel"])
+	}
+	if CategoryTotals["food"] != 1_000_000 {
+		t.Fatalf("Expected travel category to be sum to 5000000, got %d", CategoryTotals["food"])
 	}
 }

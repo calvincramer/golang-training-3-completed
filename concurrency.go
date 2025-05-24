@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -148,6 +149,142 @@ func PingPongCalc(num int) int {
 	return num
 }
 
-// TODO CALVIN: buffered channel example
-// TODO CALVIN: select on multiple channels
-// TODO CALVIN: synchronization primitive example, multiple goroutines writing same value
+// TODO: Return a buffered channel with capacity 100. Your task is to write 500 `int`s and `500`
+// strings to the channel. The integers and strings may be arbitrary. After the 500 integers and
+// strings, send the value `Sentinel` (in util.go) on the channel.
+// You may send two `Sentinel`s, and only one is required to be after all integers and strings.
+// If a `Sentinel` is sent before 500 integers and strings, it must be the case that at least 500
+// integers OR 500 strings.
+// Note: you will need to write the values to the channel in an asynchronous manner, since trying to
+// write more than 100 values to the channel will cause the sender to block.
+// Note: if this test case is taking more than a few milliseconds then it is wrong.
+func MultiWriter() chan any {
+	intWriter := func(ch chan any) {
+		for i := 1; i <= 500; i++ {
+			ch <- i
+		}
+		ch <- Sentinel
+	}
+	strWriter := func(ch chan any) {
+		for i := 1; i <= 500; i++ {
+			ch <- fmt.Sprintf("Hi %d", i)
+		}
+		ch <- Sentinel
+	}
+	// intStrWriter := func(ch chan any) {
+	// 	for i := 1; i <= 500; i++ {
+	// 		ch <- i
+	// 		ch <- fmt.Sprintf("Hi %d", i)
+	// 	}
+	// 	ch <- Sentinel
+	// }
+
+	ch := make(chan any, 100)
+	{
+		// Two goroutines
+		go intWriter(ch)
+		go strWriter(ch)
+	}
+	// {
+	// 	// Single goroutine
+	// 	go intStrWriter(ch)
+	// }
+	return ch
+}
+
+// TODO: implement a function which takes an arbitrary amount of commands on the `commands` channel,
+// and stops once there is *any* value received on the `done` channel.
+// `Command` is a struct which has a `Operation` enum and a slice of arguments.
+// This function needs to keep track of a number, and update it according to the commands, and then
+// return it at the end of execution. The number should start at 0.
+//
+// For example, starting with 0:
+//
+//  1. Command(OP_SET 50) -> 50
+//  2. Command(OP_ADD 1 7 20) -> 50 + 1 + 7 + 20 = 78
+//  3. Command(OP_MULT -1) -> 78 * -1 = -78
+//  4. Message received on `done`, -78 returned.
+//
+// Note: use the `select` feature.
+// Note: addition arguments to operations that require some or none may safely be ignored
+// Note: you may assume that all input commands are well-formed and have their required arguments
+func CommandConsumer(commands chan Command, done chan bool) int {
+	var val int = 0
+	for {
+		select {
+		case cmd := <-commands:
+			switch cmd.Op {
+			case OP_SQUARE:
+				val = val * val
+			case OP_SET:
+				if len(cmd.Args) < 1 {
+					panic("Bad SET command")
+				}
+				val = cmd.Args[0]
+			case OP_ADD:
+				for _, item := range cmd.Args {
+					val += item
+				}
+			case OP_MULT:
+				for _, item := range cmd.Args {
+					val *= item
+				}
+			default:
+				panic(fmt.Sprintf("Unsupported operation: %d", cmd.Op))
+			}
+		case <-done:
+			// Can also use a labeled break here
+			return val
+		}
+	}
+}
+
+// TODO: use tools from the 'sync' package to fix the following code below.
+// Do not change the following aspects of PerformAccounting():
+//
+//  1. PerformAccounting first clears the CategoryTotals global
+//  2. PerformAccounting spawns three Accountants and splits the transactions equally among them
+//  3. PerformAccounting waits for all goroutine Accountants to finish before returning
+//
+// Note: you may *minimally* change TestPerformAccounting() if using a different data type for
+// CategoryTotals.
+var CategoryTotals map[string]int = map[string]int{}
+var CategoryTotalsLock sync.Mutex
+
+func Accountant(transactions []Transaction, done chan<- bool) {
+	for _, trans := range transactions {
+		CategoryTotalsLock.Lock()
+		curTotal, exists := CategoryTotals[trans.Category]
+		if !exists {
+			CategoryTotals[trans.Category] = trans.Amount
+		} else {
+			CategoryTotals[trans.Category] = curTotal + trans.Amount
+		}
+		CategoryTotalsLock.Unlock()
+	}
+	done <- true
+}
+
+func PerformAccounting(transactions []Transaction) {
+	clear(CategoryTotals) // Do not remove this line
+
+	// Share tasks among multiple accountants
+	third := len(transactions) / 3
+	twoThird := (len(transactions) * 2) / 3
+
+	doneCh := make(chan bool, 3)
+	go Accountant(transactions[:third], doneCh)
+	go Accountant(transactions[third:twoThird], doneCh)
+	go Accountant(transactions[twoThird:], doneCh)
+
+	// Wait for accountants
+	doneCount := 0
+	for {
+		for range doneCh {
+			doneCount += 1
+			if doneCount >= 3 {
+				return
+			}
+		}
+	}
+}

@@ -54,3 +54,26 @@ func GetGoogleWebpage() {
 func IsPrimeGoroutine(n int64, res chan<- bool) {
 	res <- IsPrime(n)
 }
+
+type SentinelT struct{}
+
+var Sentinel SentinelT = SentinelT{}
+
+type Command struct {
+	Op   Operation
+	Args []int
+}
+
+type Operation int
+
+const (
+	OP_SQUARE Operation = iota // Square the current value. No arguments accepted.
+	OP_SET                     // Set the current value to Args[0]. One argument supplied.
+	OP_ADD                     // Add each member of Args to the current value.
+	OP_MULT                    // Multiple the current value by each member of Args
+)
+
+type Transaction struct {
+	Category string
+	Amount   int
+}
