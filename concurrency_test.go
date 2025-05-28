@@ -59,7 +59,8 @@ func TestCalcSumOneMillion(t *testing.T) {
 }
 
 func TestIsPrimeMultiple(t *testing.T) {
-	const REPEAT_TIMES = 100_000
+	const REPEAT_TIMES = 10_000
+	const divFactor = 20
 	var parallelTime time.Duration
 	var mainThreadTime time.Duration
 
@@ -104,7 +105,6 @@ func TestIsPrimeMultiple(t *testing.T) {
 
 	// Run smaller part on main thread to ensure IsPrimeMultiple is using goroutines
 	{
-		divFactor := 20
 		numbers := makePrimeNumbersSlice(REPEAT_TIMES / divFactor)
 		start := time.Now()
 		var result []bool = make([]bool, len(numbers))
@@ -113,18 +113,20 @@ func TestIsPrimeMultiple(t *testing.T) {
 		}
 		mainThreadTime = time.Since(start)
 		checkResults(numbers, result)
+	}
 
-		// Compare times. Parallel should be at least 50% faster than running on main thread.
-		// Even a CPU with two cores should run close to 2x faster.
-		mainThreadWholeSecs := mainThreadTime.Seconds() * float64(divFactor)
-		parallelSecs := parallelTime.Seconds()
-		speedup := mainThreadWholeSecs / parallelSecs
+	// Compare times. Parallel should be at least 50% faster than running on main thread.
+	// Even a CPU with two cores should run close to 2x faster.
+	mainThreadWholeSecs := mainThreadTime.Seconds() * float64(divFactor)
+	parallelSecs := parallelTime.Seconds()
+	speedup := mainThreadWholeSecs / parallelSecs
 
-		// fmt.Printf("%f - %f (%f) - %f\n", parallelSecs, mainThreadWholeSecs, mainThreadTime.Seconds(), speedup)
+	// fmt.Printf("parallel: %f\n", parallelSecs)
+	// fmt.Printf("main estimated: %f (direct: %f)\n", mainThreadWholeSecs, mainThreadTime.Seconds())
+	// fmt.Printf("speedup: %f\n", speedup)
 
-		if speedup < 1.5 {
-			t.Fatalf("It looks like IsPrimeMultiple is not spawning goroutines based on execution time")
-		}
+	if speedup < 1.5 {
+		t.Fatalf("It looks like IsPrimeMultiple is not spawning goroutines based on execution time")
 	}
 }
 
@@ -169,38 +171,42 @@ func TestMultiWriter(t *testing.T) {
 	var numSentinels int = 0
 done:
 	for {
-		val := <-ch
-		switch val.(type) {
-		case int:
-			numInts += 1
-			if numInts > 500 {
-				t.Fatalf("Got more than 500 integers on the channel")
-			}
-		case string:
-			numStrs += 1
-			if numStrs > 500 {
-				t.Fatalf("Got more than 500 strings on the channel")
-			}
-		case SentinelT:
-			numSentinels += 1
-			if numSentinels > 2 {
-				t.Fatalf("Got more than 2 sentinels on the channel")
-			}
-			if numSentinels == 1 {
-				if numInts < 500 && numStrs < 500 {
-					t.Fatalf("Got first sentinel but did not receive 500 integers or 500 strings yet")
+		select {
+		case <-time.After(time.Second):
+			t.Fatalf("timeout after 1 second, not getting expected output from channel!")
+		case val := <-ch:
+			switch val.(type) {
+			case int:
+				numInts += 1
+				if numInts > 500 {
+					t.Fatalf("Got more than 500 integers on the channel")
 				}
-				if numInts == 500 && numStrs == 500 {
+			case string:
+				numStrs += 1
+				if numStrs > 500 {
+					t.Fatalf("Got more than 500 strings on the channel")
+				}
+			case SentinelT:
+				numSentinels += 1
+				if numSentinels > 2 {
+					t.Fatalf("Got more than 2 sentinels on the channel")
+				}
+				if numSentinels == 1 {
+					if numInts < 500 && numStrs < 500 {
+						t.Fatalf("Got first sentinel but did not receive 500 integers or 500 strings yet")
+					}
+					if numInts == 500 && numStrs == 500 {
+						break done
+					}
+				} else if numSentinels == 2 {
+					if numInts != 500 && numStrs != 500 {
+						t.Fatalf("Got second sentinel, but do not have 500 integers and 500 strings")
+					}
 					break done
 				}
-			} else if numSentinels == 2 {
-				if numInts != 500 && numStrs != 500 {
-					t.Fatalf("Got second sentinel, but do not have 500 integers and 500 strings")
-				}
-				break done
+			default:
+				t.Fatalf("Unexpected type on channel: %T", val)
 			}
-		default:
-			t.Fatalf("Unexpected type on channel: %T", val)
 		}
 	}
 	if numInts != 500 || numStrs != 500 || (numSentinels != 1 && numSentinels != 2) {
